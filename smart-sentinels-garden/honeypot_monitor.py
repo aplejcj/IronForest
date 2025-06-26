@@ -41,7 +41,7 @@ def analyze_file(filepath):
 
     if extension == '.exe' and filesize < 1024:
         risk_score += 3
-        reasons.append("Suspiciously small executable size")
+        reasons.append("Suspiciously small size")
         
     file_type = "script" if extension in ['.ps1', '.bat', '.vbs'] else "executable" if extension == '.exe' else "unknown"
 
