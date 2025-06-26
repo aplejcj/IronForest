@@ -37,8 +37,8 @@ def main():
     sns.histplot(time_data, bins=10, kde=True)
     plt.title('Distribution of Time-to-Immunise (n=30)', fontsize=16)
     plt.xlabel('Time (seconds)', fontsize=12)
-    plt.ylabel('Frequency', fontsize=12)
-    plt.axvline(mean_time, color='r', linestyle='--', label=f'Mean: {mean_time:.2f}s')
+    plt.ylabel('Count', fontsize=12)
+    plt.axvline(mean_time, color='r', linestyle='--', label=f'Mean: {mean_time:.3f}s')
     plt.legend()
     plt.savefig('histogram_results.png') # บันทึกเป็นไฟล์ภาพ
     print("\nSaved histogram plot to 'histogram_results.png'")

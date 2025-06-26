@@ -1,3 +1,6 @@
 pandas
 matplotlib
 seaborn
+pefile
+yara-python
+requests
