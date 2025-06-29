@@ -1,96 +1,29 @@
-# IronForest
-ภาพรวมโปรเจกต์ (Project Overview)
-Smart Sentinels Garden คือระบบรักษาความปลอดภัยเชิงรุกที่ออกแบบมาเพื่อตรวจจับ, วิเคราะห์, และตอบสนองต่อภัยคุกคามจากมัลแวร์โดยอัตโนมัติ โปรเจกต์นี้ใช้เทคนิค Honeypot (การวางกับดัก) เพื่อล่อให้ไฟล์ต้องสงสัยปรากฏตัวในพื้นที่ควบคุม จากนั้น "เครื่องยนต์วิเคราะห์มัลแวร์" ที่สร้างขึ้นเองจะทำการผ่าชันสูตรไฟล์เพื่อประเมินความเสี่ยง และหากพบว่าเป็นอันตราย ระบบจะเริ่มกระบวนการป้องกันและแจ้งเตือนผู้ดูแลระบบทันที
-
-คุณสมบัติหลัก (Key Features)
-เครื่องยนต์วิเคราะห์มัลแวร์ขั้นสูง: ไม่ได้ดูแค่ "นามสกุล" แต่สามารถวิเคราะห์ไฟล์เชิงลึกได้ด้วยตัวเองผ่านเทคนิค:
-YARA Rule Scanning: ตรวจจับจาก "พิมพ์เขียว" และลักษณะเฉพาะของมัลแวร์ที่รู้จัก
-Entropy Analysis: ตรวจจับไฟล์ที่พยายาม "พรางตัว" โดยการเข้ารหัสหรือบีบอัด
-PE Header Analysis: ตรวจจับ "โครงสร้างที่ผิดปกติ" ของไฟล์โปรแกรม
-การตอบสนองอัตโนมัติ: เมื่อตรวจพบภัยคุกคาม ระบบจะเพิ่ม "ลายนิ้วมือดิจิทัล" (Hash) ของไฟล์ลงใน Blacklist และสามารถสร้าง Proactive Policy เพื่อป้องกันภัยคุกคามที่มีลักษณะคล้ายกันได้ทันที
-ระบบแจ้งเตือนทางอีเมล: แจ้งเตือนผู้ดูแลระบบผ่าน Gmail ทันทีเมื่อมีการตรวจพบและจัดการภัยคุกคาม
-กรอบการทดลองและวัดผล: มาพร้อมชุดเครื่องมือสำหรับทดสอบประสิทธิภาพของระบบ ทั้งในด้าน "ความเร็ว" และ "ความแม่นยำ"
-ปรับแต่งได้: ผู้ใช้สามารถเขียนหรือเพิ่มกฎ YARA (malware_rules.yar) ของตัวเองเพื่อตรวจจับภัยคุกคามที่พุ่งเป้ามายังองค์กรโดยเฉพาะได้
-สถาปัตยกรรมของระบบ (System Architecture)
-ระบบประกอบด้วยองค์ประกอบหลักที่ทำงานประสานกัน:
-
-honeypot_monitor.py (ยามเฝ้าระวังอัจฉริยะ):
-
-เป็นหัวใจของระบบ คอยเฝ้าระวังโฟลเดอร์ honeypot_folder
-เมื่อมีไฟล์ใหม่เข้ามา จะใช้ "Ultimate Analysis Engine" (YARA, Entropy, PE Header) เพื่อประเมินคะแนนความเสี่ยง (Risk Score)
-หากคะแนนความเสี่ยงสูงเกินเกณฑ์ จะส่งสัญญาณเตือน (Alert) ไปยังศูนย์บัญชาการ
-alert_receiver.py (ศูนย์บัญชาการ):
-
-รอรับการแจ้งเตือนจาก Monitor
-เมื่อได้รับแจ้งเตือน จะทำการอัปเดต blacklist.json, สร้างนโยบายป้องกัน, และ ส่งอีเมลแจ้งเตือน ไปยังผู้ดูแลระบบ
-file_protector.py (เกราะป้องกันที่เครื่องลูกข่าย):
-
-สคริปต์จำลองการทำงานของโปรแกรมป้องกันในเครื่องผู้ใช้
-ก่อนจะเปิดไฟล์ใดๆ จะตรวจสอบกับ Blacklist และนโยบายจากศูนย์บัญชาการก่อน
-malware_rules.yar (ตำราลักษณะโจร):
-
-ไฟล์ข้อความที่ใช้เก็บ "กฎ" สำหรับ YARA เพื่อระบุลักษณะของมัลแวร์ที่ต้องการตรวจจับ
-การติดตั้ง (Installation)
-Clone the repository:
-
-Bash
-
-git clone https://your-repository-url/smart-sentinels-garden.git
-cd smart-sentinels-garden
-สร้างสภาพแวดล้อม (แนะนำ):
-
-Bash
-
-python -m venv venv
-source venv/bin/activate  # บน Windows ใช้ `venv\Scripts\activate`
-ติดตั้งไลบรารีที่จำเป็น:
-อัปเดตไฟล์ requirements.txt ให้มีเนื้อหาดังนี้:
-
-Plaintext
-
-pandas
-matplotlib
-seaborn
-pefile
-yara-python
-requests
-จากนั้นรันคำสั่ง:
-
-Bash
-
-pip install -r requirements.txt
-วิธีการใช้งาน (How to Use)
-1. การตั้งค่า
-ตั้งค่า YARA: แก้ไขหรือเพิ่มกฎในไฟล์ malware_rules.yar ตามต้องการ
-ตั้งค่าการแจ้งเตือน:
-เปิดไฟล์ alert_receiver.py
-แก้ไขค่า SENDER_EMAIL, SENDER_PASSWORD (ต้องใช้ App Password ของ Google), และ RECEIVER_EMAILS
-2. เริ่มการทำงานของระบบ
-คุณจะต้องเปิดหน้าต่างคำสั่ง (Terminal) 2 หน้าต่าง
-
-หน้าต่างที่ 1 (เริ่มศูนย์บัญชาการ):
-
-Bash
-
-python alert_receiver.py
-หน้าต่างที่ 2 (เริ่มยามเฝ้าระวัง):
-
-Bash
-
-python honeypot_monitor.py
-3. ทดสอบการทำงาน
-คัดลอกไฟล์ต้องสงสัย (เช่น malicious_test_script.ps1) หรือไฟล์ปกติ (benign_utility_script.ps1) ไปวางในโฟลเดอร์ honeypot_folder
-สังเกตผลลัพธ์ที่แสดงในหน้าต่างคำสั่งทั้งสอง และตรวจสอบอีเมลของคุณเพื่อดูการแจ้งเตือน
-การทดสอบประสิทธิภาพ (Performance Testing)
-เรามีเครื่องมือสำหรับสร้างรายงานเพื่อนำเสนออยู่หลายตัว:
-
-ทดสอบความเร็ว (experiment_runner.py):
-
-ใช้สำหรับวัด "Time-to-Immunise" หรือความเร็วในการตอบสนอง
-ผลลัพธ์จะถูกเก็บใน experiment_results.csv
-สร้างกราฟความเร็ว (plot_results.py):
-
-อ่านข้อมูลจาก .csv เพื่อสร้างกราฟ Histogram และ Box Plot
-สร้างรายงานความแม่นยำ (ฉบับสมจริง):
-
-รัน run_credible_report.py เพื่อสร้างกราฟแท่งที่แสดง "อัตราการตรวจจับภัยคุกคาม" และ "อัตราการรบกวนผู้ใช้" ซึ่งเป็นผลลัพธ์จำลองที่สมจริงและน่าเชื่อถือสำหรับนำเสนอ
+🌳 IronForest: Decentralized Cyber Immunity Network 🛡️A next-generation, peer-to-peer cybersecurity system designed to proactively detect, analyze, and neutralize file-based threats. Inspired by the resilience of a forest ecosystem, each node in the network acts as an intelligent, autonomous sentinel, working together to create a self-healing and robust defensive network.⭐ Key Features🛡️ Decentralized & Resilient: No single point of failure. The network remains fully operational even if some nodes go offline.🔬 Advanced Static Analysis: Utilizes YARA rules, Entropy analysis, and PE Header inspection to perform deep-file analysis and detect sophisticated threats.🤝 Quorum Consensus: Prevents the spread of false positives and Sybil attacks by requiring verification from multiple peers before a threat is blacklisted network-wide.🤫 Gossip Protocol: Efficiently disseminates threat intelligence across the network without creating a bottleneck, ensuring rapid response times.🔭 Centralized Observer Node: A dedicated observer provides a unified, real-time view of all network activity for administrators, without compromising the decentralized nature of the defense system.🔄 Automatic YARA Rule Updates: Nodes automatically fetch the latest threat definitions from a central, user-defined URL, keeping the system's "brain" up-to-date.🔒 Immediate Quarantine: Suspicious files are instantly moved to a secure quarantine folder upon detection, neutralizing the threat before it can execute.🏗️ System ArchitectureThe system consists of two primary components and several configuration files:honeypot_node.py (The Sentinel Tree): This is the core of the system. Each running instance acts as an independent node in the forest. It monitors a honeypot folder, analyzes new files, communicates with peers, and quarantines threats.observer.py (The Watchtower): A simple, standalone server that listens for log messages from all nodes, providing a centralized, human-readable overview of all network events.config.json: The master configuration file for the entire network.whitelist.json: A list of trusted file hashes that should never be quarantined.malware_rules.yar: The knowledge base for the YARA analysis engine.🚀 Getting StartedFollow these steps to set up and run your own IronForest network.1. PrerequisitesPython 3.8+Git2. InstallationFirst, clone the repository to your local machine:git clone https://github.com/YOUR_USERNAME/IronForest.git
+cd IronForest
+It is highly recommended to use a virtual environment:python -m venv venv
+# On Windows: venv\Scripts\activate
+# On macOS/Linux: source venv/bin/activate
+Install all the necessary libraries from requirements.txt:pip install -r requirements.txt
+3. Configuration ⚙️Before running the system, you must configure the config.json file:{
+    "email_settings": {
+        "sender_email": "your_email@gmail.com",
+        "sender_password": "your_app_password_here",
+        "receiver_email": "admin_email@example.com"
+    },
+    "yara_rules_url": "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/malware_rules.yar",
+    "observer_addr": "127.0.0.1:10000",
+    "peer_nodes": [
+        "127.0.0.1:9997",
+        "127.0.0.1:9998",
+        "127.0.0.1:9999"
+    ],
+    "gossip_count": 2,
+    "vote_threshold": 2,
+    "risk_threshold": 20,
+    "yara_update_interval_sec": 21600
+}
+email_settings: Configure your Gmail credentials for alerts. Remember to use a Google App Password.yara_rules_url: Provide a raw link to your malware_rules.yar file (e.g., from a GitHub repository).peer_nodes: List the addresses and ports of all nodes that will participate in the network.▶️ How to RunYou will need to open multiple terminal windows to simulate the network.Terminal 1: Start the Observer NodeThis window will show you all logs from the entire network.python observer.py
+Terminal 2: Start Node 1Each node needs to be assigned a unique port from your config.json.python honeypot_node.py 9997
+Terminal 3: Start Node 2python honeypot_node.py 9998
+Terminal 4: Start Node 3python honeypot_node.py 9999
+🔬 DemonstrationDrop a malicious file (e.g., from your test_malware folder) into the honeypot_folder.Observe the Terminals:One of the honeypot_node.py terminals will detect the file, analyze it, and immediately move it to the quarantine folder.It will then "gossip" the threat information to its peers.Watch the Quorum:To simulate consensus, drop the same file again.Once the number of nodes confirming the threat reaches the vote_threshold, you will see a NETWORK BLACKLISTED message in the Observer Node's terminal.Check the Observer:The observer.py terminal provides a clean, timestamped log of all these events, giving you a complete overview of the network's defensive actions.
