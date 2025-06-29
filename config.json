@@ -1,0 +1,18 @@
+{
+    "email_settings": {
+        "sender_email": "your_email@gmail.com",
+        "sender_password": "your_app_password_here",
+        "receiver_email": "admin_email@example.com"
+    },
+    "yara_rules_url": "https://github.com/aplejcj/IronForest/blob/main/malware_rules.yar",
+    "observer_addr": "127.0.0.1:10000",
+    "peer_nodes": [
+        "127.0.0.1:9997",
+        "127.0.0.1:9998",
+        "127.0.0.1:9999"
+    ],
+    "gossip_count": 2,
+    "vote_threshold": 2,
+    "risk_threshold": 20,
+    "yara_update_interval_sec": 21600
+}

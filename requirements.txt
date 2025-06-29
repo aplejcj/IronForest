@@ -1,6 +1,6 @@
-pandas
-matplotlib
-seaborn
 pefile
 yara-python
 requests
+pandas
+matplotlib
+seaborn
