@@ -7,10 +7,10 @@ import json
 import threading
 import random
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import smtplib, ssl
 from email.mime.text import MIMEText
-import re
+import collections
 import pefile
 import math
 import yara
@@ -30,9 +30,11 @@ YARA_RULES_PATH = "./malware_rules.yar"
 
 yara_rules = None
 trusted_hashes = set()
-pending_votes = {} # { "hash": {"voters": {"node1_addr", "node2_addr"}, "timestamp": "iso_time"}, ... }
+pending_votes = {}
+state_lock = threading.Lock()
+recent_message_ids = collections.deque(maxlen=1000)
 
-# --- ส่วนของการเข้ารหัส (Encryption Engine) ---
+# --- กลไกการเข้ารหัส ---
 def encrypt_data(key, data):
     iv = os.urandom(12)
     encryptor = Cipher(algorithms.AES(key.encode()), modes.GCM(iv), backend=default_backend()).encryptor()
@@ -46,35 +48,38 @@ def decrypt_data(key, encrypted_data):
     decryptor = Cipher(algorithms.AES(key.encode()), modes.GCM(iv, tag), backend=default_backend()).decryptor()
     return decryptor.update(ciphertext) + decryptor.finalize()
 
-# --- ส่วนของการจัดการสถานะ (State Management) ---
+# --- กลไกการจัดการสถานะ (ปลอดภัยต่อ Thread) ---
 def load_state():
     global pending_votes
-    try:
-        if not os.path.exists(STATE_PATH): os.makedirs(STATE_PATH)
-        with open(VOTES_FILE, 'r') as f:
-            saved_votes = json.load(f)
-        for k, v in saved_votes.items():
-            pending_votes[k] = {'voters': set(v.get('voters', [])), 'timestamp': v.get('timestamp')}
-    except (FileNotFoundError, json.JSONDecodeError):
-        pending_votes = {}
+    with state_lock:
+        try:
+            if not os.path.exists(STATE_PATH): os.makedirs(STATE_PATH)
+            with open(VOTES_FILE, 'r') as f:
+                saved_votes = json.load(f)
+            for k, v in saved_votes.items():
+                pending_votes[k] = {'voters': set(v.get('voters', [])), 'timestamp': v.get('timestamp')}
+        except (FileNotFoundError, json.JSONDecodeError):
+            pending_votes = {}
 
 def save_state():
-    serializable_votes = {k: {'voters': list(v['voters']), 'timestamp': v['timestamp']} for k, v in pending_votes.items()}
-    with open(VOTES_FILE, 'w') as f:
-        json.dump(serializable_votes, f, indent=4)
+    with state_lock:
+        serializable_votes = {k: {'voters': list(v['voters']), 'timestamp': v['timestamp']} for k, v in pending_votes.items()}
+        with open(VOTES_FILE, 'w') as f:
+            json.dump(serializable_votes, f, indent=4)
 
 def cleanup_old_votes():
     while True:
-        time.sleep(3600) # ตรวจสอบทุกชั่วโมง
-        now = datetime.now()
-        old_hashes = [h for h, v in list(pending_votes.items()) if now - datetime.fromisoformat(v['timestamp']) > timedelta(hours=24)]
-        if old_hashes:
-            print(f"[STATE] Cleaning up {len(old_hashes)} expired votes.")
-            for h in old_hashes:
-                del pending_votes[h]
-            save_state()
+        time.sleep(3600)
+        with state_lock:
+            now = datetime.now(timezone.utc)
+            old_hashes = [h for h, v in list(pending_votes.items()) if now - datetime.fromisoformat(v['timestamp'].replace('Z', '+00:00')) > timedelta(hours=24)]
+            if old_hashes:
+                print(f"[STATE] Cleaning up {len(old_hashes)} expired votes.")
+                for h in old_hashes:
+                    del pending_votes[h]
+                save_state()
 
-# --- ส่วนของการวิเคราะห์ไฟล์ (Analysis Engine) ---
+# --- กลไกการวิเคราะห์ไฟล์ (ปลอดภัยต่อไฟล์ขนาดใหญ่) ---
 def load_yara_rules(path=YARA_RULES_PATH):
     global yara_rules
     try:
@@ -90,42 +95,43 @@ def get_file_hash(filepath, chunk_size=8192):
             while chunk := f.read(chunk_size):
                 sha256.update(chunk)
         return sha256.hexdigest()
-    except IOError:
-        return None
+    except IOError: return None
 
 def analyze_file(filepath):
     risk_score, reasons = 0, []
     try:
-        # YARA Scan
         if yara_rules:
             matches = yara_rules.match(filepath=filepath)
             if matches:
                 risk_score += 15
                 reasons.append(f"YARA Match: {[m.rule for m in matches]}")
-        # Entropy Scan
-        with open(filepath, 'rb') as f: content = f.read()
-        content_len = len(content)
-        if content_len > 0:
-            entropy = math.fsum(- (p_x/content_len) * math.log(p_x/content_len, 2) for p_x in [content.count(byte) for byte in range(256)] if p_x > 0)
+        
+        byte_counts = [0] * 256
+        file_size = 0
+        with open(filepath, 'rb') as f:
+            while chunk := f.read(8192):
+                for byte in chunk:
+                    byte_counts[byte] += 1
+                file_size += len(chunk)
+        
+        if file_size > 0:
+            entropy = math.fsum(- (count/file_size) * math.log(count/file_size, 2) for count in byte_counts if count > 0)
             if entropy > 7.5:
                 risk_score += 10
                 reasons.append(f"High Entropy ({entropy:.2f})")
-    except Exception:
-        pass
+    except Exception: pass
     return risk_score, reasons
 
-# --- ส่วนของการกระทำและการสื่อสาร ---
+# --- กลไกการจัดการไฟล์และการแจ้งเตือน ---
 def quarantine_file(filepath, filename, node_addr):
     if not os.path.exists(QUARANTINE_PATH): os.makedirs(QUARANTINE_PATH)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    quarantined_filename = f"{timestamp}_{node_addr.replace(':', '_')}_{filename}"
-    destination_path = os.path.join(QUARANTINE_PATH, quarantined_filename)
+    q_filename = f"{timestamp}_{node_addr.replace(':', '_')}_{filename}"
+    dest_path = os.path.join(QUARANTINE_PATH, q_filename)
     try:
-        shutil.move(filepath, destination_path)
+        shutil.move(filepath, dest_path)
         return True
-    except Exception as e:
-        print(f"[{node_addr}] FAILED to quarantine file '{filename}': {e}")
-        return False
+    except Exception: return False
 
 def send_email_alert(filename, risk_score, reasons, config):
     settings = config.get('email_settings', {})
@@ -140,9 +146,10 @@ def send_email_alert(filename, risk_score, reasons, config):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
             server.login(sender, password)
             server.sendmail(sender, receiver, msg.as_string())
-        print(f"[EMAIL] Alert for '{filename}' sent.")
+        print(f"[EMAIL] Alert for '{filename}' sent successfully.")
     except Exception as e: print(f"[EMAIL ERROR] Could not send email: {e}")
 
+# --- กลไกเครือข่าย (เข้ารหัสและซิงค์ข้อมูล) ---
 def log_to_observer(log_msg, config):
     try:
         host, port_str = config['observer_addr'].split(':')
@@ -153,6 +160,8 @@ def log_to_observer(log_msg, config):
     except Exception: pass
 
 def send_message(host, port, message, config):
+    message['msg_id'] = hashlib.sha256(os.urandom(32)).hexdigest()
+    message['timestamp'] = datetime.now(timezone.utc).isoformat()
     try:
         key = config['encryption_key']
         encrypted_message = encrypt_data(key, json.dumps(message).encode('utf-8'))
@@ -163,15 +172,16 @@ def send_message(host, port, message, config):
     except Exception: pass
 
 def update_network_blacklist(file_hash, node_addr, config):
-    try:
-        with open(BLACKLIST_FILE, 'r') as f: blacklist = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError): blacklist = {}
-    if file_hash not in blacklist:
-        blacklist[file_hash] = datetime.now().isoformat()
-        with open(BLACKLIST_FILE, 'w') as f: json.dump(blacklist, f, indent=4)
-        log_msg = f"[{node_addr}] NETWORK BLACKLISTED: Hash {file_hash[:10]}... has reached quorum."
-        print(log_msg)
-        log_to_observer(log_msg, config)
+    with state_lock:
+        try:
+            with open(BLACKLIST_FILE, 'r') as f: blacklist = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError): blacklist = {}
+        if file_hash not in blacklist:
+            blacklist[file_hash] = datetime.now().isoformat()
+            with open(BLACKLIST_FILE, 'w') as f: json.dump(blacklist, f, indent=4)
+            log_msg = f"[{node_addr}] NETWORK BLACKLISTED: Hash {file_hash[:10]}... reached quorum."
+            print(log_msg)
+            log_to_observer(log_msg, config)
 
 def threat_listener(node_port, node_addr, config):
     key = config['encryption_key']
@@ -185,35 +195,44 @@ def threat_listener(node_port, node_addr, config):
             with conn:
                 try:
                     data = conn.recv(4096)
-                    if data:
-                        decrypted_data = decrypt_data(key, data)
-                        message = json.loads(decrypted_data.decode('utf-8'))
-                        msg_type = message.get('type')
-                        source_node = message.get('source_node')
+                    if not data: continue
+                    
+                    decrypted_data = decrypt_data(key, data)
+                    message = json.loads(decrypted_data.decode('utf-8'))
+                    
+                    msg_id = message.get('msg_id')
+                    msg_time = datetime.fromisoformat(message.get('timestamp').replace('Z', '+00:00'))
+                    if msg_id in recent_message_ids or (datetime.now(timezone.utc) - msg_time) > timedelta(seconds=config['message_ttl_sec']):
+                        continue
+                    recent_message_ids.append(msg_id)
 
-                        if msg_type == 'vote':
-                            file_hash = message.get('hash')
-                            log_msg = f"[{node_addr}] <- Received vote for hash {file_hash[:10]} from {source_node}"
-                            print(log_msg)
-                            log_to_observer(log_msg, config)
-                            pending_votes.setdefault(file_hash, {'voters': set(), 'timestamp': datetime.now().isoformat()})['voters'].add(source_node)
+                    msg_type = message.get('type')
+                    source_node = message.get('source_node')
+
+                    if msg_type == 'vote':
+                        file_hash = message.get('hash')
+                        log_msg = f"[{node_addr}] <- Received vote for hash {file_hash[:10]} from {source_node}"
+                        print(log_msg)
+                        log_to_observer(log_msg, config)
+                        with state_lock:
+                            pending_votes.setdefault(file_hash, {'voters': set(), 'timestamp': datetime.now(timezone.utc).isoformat()})['voters'].add(source_node)
                             save_state()
                             if len(pending_votes[file_hash]['voters']) >= config['vote_threshold']:
                                 update_network_blacklist(file_hash, node_addr, config)
-                        
-                        elif msg_type == 'sync_request':
-                            try:
-                                with open(BLACKLIST_FILE, 'r') as f: my_blacklist = json.load(f)
-                            except (FileNotFoundError, json.JSONDecodeError): my_blacklist = {}
-                            response_msg = {'type': 'sync_response', 'blacklist': my_blacklist, 'source_node': node_addr}
-                            r_host, r_port = source_node.split(':')
-                            send_message(r_host, int(r_port), response_msg, config)
+                    
+                    elif msg_type == 'sync_request':
+                        try:
+                            with open(BLACKLIST_FILE, 'r') as f: my_blacklist = json.load(f)
+                        except (FileNotFoundError, json.JSONDecodeError): my_blacklist = {}
+                        response_msg = {'type': 'sync_response', 'blacklist': my_blacklist, 'source_node': node_addr}
+                        r_host, r_port = source_node.split(':')
+                        send_message(r_host, int(r_port), response_msg, config)
 
-                        elif msg_type == 'sync_response':
-                            their_blacklist = message.get('blacklist', {})
-                            for h, ts in their_blacklist.items():
-                                update_network_blacklist(h, node_addr, config)
-                                
+                    elif msg_type == 'sync_response':
+                        their_blacklist = message.get('blacklist', {})
+                        for h, ts in their_blacklist.items():
+                            update_network_blacklist(h, node_addr, config)
+                            
                 except Exception: pass
 
 def yara_updater(config):
@@ -232,11 +251,7 @@ def periodic_sync(peers, node_addr, config):
         time.sleep(config['state_check_interval_sec'])
         print("[SYNC] Performing periodic state check...")
         message = {"type": "sync_request", "source_node": node_addr}
-        for peer in peers:
-            try:
-                host, port_str = peer.split(':')
-                send_message(host, int(port_str), message, config)
-            except Exception: pass
+        gossip_threat(message, peers, len(peers), node_addr, config) # Send sync request to all peers
 
 def gossip_threat(threat_data, peers, gossip_count, node_addr, config):
     selected_peers = random.sample(peers, min(len(peers), gossip_count))
@@ -247,7 +262,7 @@ def gossip_threat(threat_data, peers, gossip_count, node_addr, config):
             send_message(host, int(port_str), threat_data, config)
         except Exception: pass
 
-# --- Main Application Logic ---
+# --- การทำงานหลัก ---
 def main():
     try:
         config = load_config()
@@ -255,34 +270,35 @@ def main():
         with open(WHITELIST_FILE, 'r') as f: trusted_hashes = set(json.load(f).get('hashes',[]))
     except FileNotFoundError as e:
         print(f"[FATAL] Critical file missing: {e}. Exiting.")
-        return
+        sys.exit(1)
         
-    load_yara_rules()
+    load_yara_rules(YARA_RULES_PATH)
     load_state()
     
     node_port = int(sys.argv[1])
     node_addr = f"127.0.0.1:{node_port}"
     peers = [p for p in config['peer_nodes'] if p != node_addr]
 
-    # Start background threads
+    # เริ่ม Threads การทำงานเบื้องหลัง
     threading.Thread(target=threat_listener, args=(node_port, node_addr, config), daemon=True).start()
     threading.Thread(target=yara_updater, args=(config,), daemon=True).start()
     threading.Thread(target=cleanup_old_votes, daemon=True).start()
     threading.Thread(target=periodic_sync, args=(peers, node_addr, config), daemon=True).start()
     
-    time.sleep(1) # Wait for listener to start
+    time.sleep(1)
     initial_sync(peers, node_addr, config)
 
     log_to_observer(f"[{node_addr}] Node started.", config)
-    known_files = set(os.listdir(HONEYPOT_PATH))
+    known_files = set()
     
     while True:
         try:
-            new_files = set(os.listdir(HONEYPOT_PATH)) - known_files
+            current_files = set(os.listdir(HONEYPOT_PATH))
+            new_files = current_files - known_files
             if new_files:
                 for filename in new_files:
                     filepath = os.path.join(HONEYPOT_PATH, filename)
-                    if not os.path.isfile(filepath): continue # Skip directories
+                    if not os.path.isfile(filepath): continue
                     
                     file_hash = get_file_hash(filepath)
                     
@@ -301,16 +317,17 @@ def main():
                         log_to_observer(log_msg, config)
                         
                         if quarantine_file(filepath, filename, node_addr):
-                            threat_data = {"type": "vote", "hash": file_hash, "source_node": node_addr}
-                            pending_votes.setdefault(file_hash, {'voters': set(), 'timestamp': datetime.now().isoformat()})['voters'].add(node_addr)
-                            save_state()
-                            gossip_threat(threat_data, peers, config['gossip_count'], node_addr, config)
-                            if len(pending_votes[file_hash]['voters']) >= config['vote_threshold']:
-                                update_network_blacklist(file_hash, node_addr, config)
+                            with state_lock:
+                                threat_data = {"type": "vote", "hash": file_hash, "source_node": node_addr}
+                                pending_votes.setdefault(file_hash, {'voters': set(), 'timestamp': datetime.now(timezone.utc).isoformat()})['voters'].add(node_addr)
+                                save_state()
+                                gossip_threat(threat_data, peers, config['gossip_count'], node_addr, config)
+                                if len(pending_votes[file_hash]['voters']) >= config['vote_threshold']:
+                                    update_network_blacklist(file_hash, node_addr, config)
                             send_email_alert(filename, risk_score, reasons, config)
                         continue
                 
-                known_files = new_files.union(known_files)
+                known_files.update(new_files)
             time.sleep(2)
         except KeyboardInterrupt:
             log_to_observer(f"[{node_addr}] Node stopped.", config)
