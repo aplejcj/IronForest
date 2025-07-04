@@ -97,8 +97,51 @@ def get_file_hash(filepath, chunk_size=8192):
         return sha256.hexdigest()
     except IOError: return None
 
+def analyze_pe_file(filepath):
+    """
+    วิเคราะห์ไฟล์ PE โดยใช้ไลบรารี pefile เพื่อค้นหาลักษณะที่น่าสงสัย
+    """
+    pe_risk = 0
+    pe_reasons = []
+    
+    suspicious_imports = {
+        'CreateRemoteThread', 'WriteProcessMemory', 'OpenProcess',
+        'VirtualAllocEx', 'GetProcAddress', 'LoadLibraryA'
+    }
+
+    try:
+        pe = pefile.PE(filepath)
+        
+        
+        if hasattr(pe, 'DIRECTORY_ENTRY_IMPORT'):
+            for entry in pe.DIRECTORY_ENTRY_IMPORT:
+                for imp in entry.imports:
+                    if imp.name and imp.name.decode('utf-8', 'ignore') in suspicious_imports:
+                        pe_risk += 5
+                        pe_reasons.append(f"Suspicious Import: {imp.name.decode('utf-8', 'ignore')}")
+        
+        
+        for section in pe.sections:
+            section_name = section.Name.decode('utf-8', 'ignore').strip('\x00')
+            entropy = section.get_entropy()
+            if entropy > 7.0:
+                pe_risk += 10
+                pe_reasons.append(f"High Entropy Section '{section_name}' ({entropy:.2f})")
+                
+    except pefile.PEFormatError:
+        
+        pass
+    except Exception as e:
+        print(f"[PE_ANALYSIS_ERROR] Could not analyze PE file {filepath}: {e}")
+        
+    return pe_risk, list(set(pe_reasons)) 
+
 def analyze_file(filepath):
+    """
+    วิเคราะห์ไฟล์เพื่อหาความเสี่ยง โดยรวมการวิเคราะห์ YARA, Entropy และ PE Structure
+    """
     risk_score, reasons = 0, []
+    
     try:
         if yara_rules:
             matches = yara_rules.match(filepath=filepath)
@@ -109,6 +152,10 @@ def analyze_file(filepath):
         byte_counts = [0] * 256
         file_size = 0
         with open(filepath, 'rb') as f:
+            
+            is_pe_file = f.read(2) == b'MZ'
+            f.seek(0) 
+            
             while chunk := f.read(8192):
                 for byte in chunk:
                     byte_counts[byte] += 1
@@ -119,7 +166,18 @@ def analyze_file(filepath):
             if entropy > 7.5:
                 risk_score += 10
                 reasons.append(f"High Entropy ({entropy:.2f})")
-    except Exception: pass
+                
+        
+        if is_pe_file:
+            pe_risk, pe_reasons = analyze_pe_file(filepath)
+            if pe_risk > 0:
+                risk_score += pe_risk
+                reasons.extend(pe_reasons)
+
+    except Exception as e:
+        print(f"[FILE_ANALYSIS_ERROR] Could not analyze file {filepath}: {e}")
+        pass 
+        
     return risk_score, reasons
 
 # --- กลไกการจัดการไฟล์และการแจ้งเตือน ---

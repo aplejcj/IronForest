@@ -16,5 +16,6 @@
     "vote_threshold": 2,
     "risk_threshold": 20,
     "yara_update_interval_sec": 21600,
-    "state_check_interval_sec": 300
+    "state_check_interval_sec": 300,
+    "message_ttl_sec": 60
 }
