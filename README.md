@@ -1,72 +1,117 @@
-🌳 IronForest: Decentralized Cyber Immunity Network 🛡️
-A next-generation, peer-to-peer cybersecurity system designed to proactively detect, analyze, and neutralize file-based threats. Inspired by the resilience of a forest ecosystem, each node in the network acts as an intelligent, autonomous sentinel, working together to create a self-healing and robust defensive network.
+ได้เลยครับ นี่คือเนื้อหาทั้งหมดที่รวมไฟล์ requirements.txt และ README.md ต่อกันเป็นไฟล์เดียวในรูปแบบรายงาน คุณสามารถคัดลอกทั้งหมดนี้ไปวางในไฟล์ของคุณได้ทันที
 
-⭐ Key Features
-🛡️ Decentralized & Resilient: No single point of failure. The network remains fully operational even if some nodes go offline.
+requirements.txt
+Plaintext
 
-🔬 Advanced Static Analysis: Utilizes YARA rules, Entropy analysis, and other techniques to perform deep-file analysis and detect sophisticated threats.
+pefile
+yara-python
+requests
+cryptography
+pandas
+matplotlib
+seaborn
+README.md
+🌳 IronForest: เครือข่ายภูมิคุ้มกันไซเบอร์แบบกระจายศูนย์ 🛡️
+IronForest คือระบบความปลอดภัยไซเบอร์แบบ Peer-to-Peer (P2P) ยุคใหม่ ที่ถูกออกแบบมาเพื่อตรวจจับ วิเคราะห์ และกำจัดภัยคุกคามจากไฟล์ที่เป็นอันตรายในเชิงรุก ได้รับแรงบันดาลใจจากความทนทานของระบบนิเวศในผืนป่า โดยแต่ละโหนดในเครือข่ายจะทำหน้าที่เปรียบเสมือนผู้พิทักษ์อัจฉริยะที่ทำงานร่วมกันเพื่อสร้างเครือข่ายการป้องกันที่แข็งแกร่งและสามารถฟื้นฟูตัวเองได้
 
-🤝 Quorum Consensus: Prevents the spread of false positives and Sybil attacks by requiring verification from multiple peers before a threat is blacklisted network-wide.
+⭐ คุณสมบัติหลัก
+🛡️ กระจายศูนย์และทนทาน (Decentralized & Resilient): ไม่มีศูนย์กลางสั่งการ (Single Point of Failure) เครือข่ายยังคงทำงานได้เต็มรูปแบบแม้บางโหนดจะออฟไลน์ไป
 
-🤫 Gossip Protocol: Efficiently disseminates threat intelligence across the network without creating a bottleneck, ensuring rapid response times.
+🔬 การวิเคราะห์เชิงลึก (Advanced Static Analysis): ใช้ YARA rules, การวิเคราะห์ Entropy และโครงสร้างไฟล์ PE เพื่อตรวจสอบไฟล์ในเชิงลึกและตรวจจับภัยคุกคามที่ซับซ้อน
 
-🔭 Centralized Observer Node: A dedicated observer provides a unified, real-time view of all network activity for administrators, without compromising the decentralized nature of the defense system.
+🤝 ระบบฉันทามติ (Quorum Consensus): ป้องกันการแจ้งเตือนที่ผิดพลาด (False Positives) และการโจมตีแบบ Sybil Attack โดยต้องการการยืนยันจากโหนดอื่นตามเกณฑ์ที่กำหนดก่อนจะประกาศ Blacklist ให้ทั่วทั้งเครือข่าย
 
-🔄 Automatic YARA Rule Updates: Nodes automatically fetch the latest threat definitions from a central, user-defined URL, keeping the system's "brain" up-to-date.
+🤫 Gossip Protocol: ใช้สำหรับกระจายข้อมูลภัยคุกคามทั่วทั้งเครือข่ายอย่างมีประสิทธิภาพและรวดเร็ว ไม่สร้างปัญหาคอขวด
 
-🔒 Immediate Quarantine: Suspicious files are instantly moved to a secure quarantine folder upon detection, neutralizing the threat before it can execute.
+🔭 Observer Node: มีโหนดสำหรับเฝ้าดูและแสดงผล Log จากทุกโหนดในเครือข่ายแบบ Real-time ช่วยให้ผู้ดูแลระบบเห็นภาพรวมทั้งหมด โดยไม่กระทบกับความเป็นกระจายศูนย์ของระบบ
 
-🏗️ System Architecture
-The system consists of two primary components and several configuration files:
+🔄 อัปเดต YARA Rules อัตโนมัติ: โหนดจะดาวน์โหลดชุดกฎ YARA ล่าสุดจาก URL ที่กำหนดโดยอัตโนมัติ เพื่อให้ "สมอง" ของระบบทันสมัยอยู่เสมอ
 
-honeypot_node.py (The Sentinel Tree): This is the core of the system. Each running instance acts as an independent node in the forest. It monitors a honeypot folder, analyzes new files, communicates with peers, and quarantines threats.
+🔒 กักกันไฟล์ทันที (Immediate Quarantine): ไฟล์ที่น่าสงสัยจะถูกย้ายไปยังโฟลเดอร์กักกันที่ปลอดภัยทันทีที่ตรวจพบ เพื่อหยุดยั้งภัยคุกคามก่อนที่จะทำงาน
 
-observer.py (The Watchtower): A simple, standalone server that listens for log messages from all nodes, providing a centralized, human-readable overview of all network events.
+🏗️ สถาปัตยกรรมของระบบ
+ระบบประกอบด้วย 2 ส่วนประกอบหลัก และไฟล์ตั้งค่าอีก 3 ไฟล์:
 
-config.json: The master configuration file for the entire network.
+honeypot_node.py (Sentinel Tree): เป็นหัวใจหลักของระบบ แต่ละ Instance ที่รันอยู่จะทำหน้าที่เป็นโหนดอิสระในเครือข่าย คอยเฝ้าระวังโฟลเดอร์ honeypot_folder, วิเคราะห์ไฟล์ใหม่, สื่อสารกับโหนดอื่น และกักกันไฟล์อันตราย
 
-whitelist.json: A list of trusted file hashes that should never be quarantined.
+observer.py (The Watchtower): เซิร์ฟเวอร์ที่ทำหน้าที่รับ Log จากทุกโหนด แล้วแสดงผลออกมาในหน้าจอเดียวเพื่อให้ผู้ดูแลสามารถเฝ้าระวังได้ง่าย
 
-malware_rules.yar: The knowledge base for the YARA analysis engine.
+config.json: ไฟล์ตั้งค่าหลักของระบบ เช่น ที่อยู่ของ Observer, รายชื่อ Peer, และค่า Threshold ต่างๆ
 
-🚀 Getting Started
-Follow these steps to set up and run your own IronForest network.
+secrets.json: ไฟล์สำหรับเก็บข้อมูลลับโดยเฉพาะ เช่น Encryption Key และรหัสผ่านอีเมล
 
-1. Prerequisites
+whitelist.json: ไฟล์สำหรับระบุค่า Hash ของไฟล์ที่เชื่อถือและไม่ต้องการให้ระบบกักกัน
+
+🚀 การติดตั้งและเริ่มต้นใช้งาน
+ทำตามขั้นตอนต่อไปนี้เพื่อติดตั้งและรันเครือข่าย IronForest ของคุณเอง
+
+1. สิ่งที่ต้องมี (Prerequisites)
 Python 3.8+
 
 Git
 
-2. Installation
-First, clone the repository to your local machine:
+2. การติดตั้ง (Installation)
+ก่อนอื่น Clone repository ไปยังเครื่องของคุณ:
 
 Bash
 
 git clone https://github.com/YOUR_USERNAME/IronForest.git
 cd IronForest
-It is highly recommended to use a virtual environment:
+ขอแนะนำให้ใช้งานภายใน Virtual Environment:
 
 Bash
 
 python -m venv venv
-# On Windows: venv\Scripts\activate
-# On macOS/Linux: source venv/bin/activate
-Install all the necessary libraries from requirements.txt:
+# บน Windows:
+venv\Scripts\activate
+# บน macOS/Linux:
+source venv/bin/activate
+ติดตั้ง Library ที่จำเป็นทั้งหมดจาก requirements.txt:
 
 Bash
 
 pip install -r requirements.txt
-3. Configuration ⚙️
-Before running the system, you must configure the config.json file:
+3. การตั้งค่า (Configuration) ⚙️
+ก่อนรันระบบ คุณต้องตั้งค่าไฟล์ .json ทั้ง 3 ไฟล์ให้ถูกต้อง
+
+A. ตั้งค่าข้อมูลลับใน secrets.json
+สร้างไฟล์ชื่อ secrets.json แล้วใส่ข้อมูลลับตามรูปแบบด้านล่าง:
+
+JSON
+
+{
+  "encryption_key": "IronForestSecretKeyForAES-256!!",
+  "sender_password": "your_google_app_password_here"
+}
+encryption_key: ตั้งคีย์สำหรับเข้ารหัสข้อมูลที่สื่อสารระหว่างโหนด (ควรตั้งให้ซับซ้อนและยาว)
+
+sender_password: รหัสผ่านแอป (App Password) ของบัญชี Gmail ที่จะใช้ส่งอีเมลแจ้งเตือน (ห้ามใช้รหัสผ่านจริงของ Gmail)
+
+B. ตั้งค่าสิทธิ์การเข้าถึง secrets.json (สำคัญมาก)
+เพื่อความปลอดภัยสูงสุด เราต้องจำกัดสิทธิ์ให้ไฟล์ secrets.json สามารถอ่านได้โดยเจ้าของไฟล์เท่านั้น
+
+บน macOS/Linux:
+
+Bash
+
+chmod 600 secrets.json
+บน Windows (ใช้ Command Prompt แบบ Administrator):
+
+DOS
+
+icacls secrets.json /inheritance:r /grant:r "%USERNAME%:(R)"
+C. ตั้งค่าระบบหลักใน config.json
+ไฟล์นี้ใช้ตั้งค่าการทำงานทั่วไปของระบบ:
 
 JSON
 
 {
     "email_settings": {
         "sender_email": "your_email@gmail.com",
-        "sender_password": "your_app_password_here",
+        "sender_password": "",
         "receiver_email": "admin_email@example.com"
     },
+    "encryption_key": "",
     "yara_rules_url": "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/malware_rules.yar",
     "observer_addr": "127.0.0.1:10000",
     "peer_nodes": [
@@ -77,54 +122,54 @@ JSON
     "gossip_count": 2,
     "vote_threshold": 2,
     "risk_threshold": 20,
-    "yara_update_interval_sec": 21600
+    "yara_update_interval_sec": 21600,
+    "state_check_interval_sec": 300,
+    "message_ttl_sec": 60
 }
-email_settings: Configure your Gmail credentials for alerts. Remember to use a Google App Password.
+email_settings: ตั้งค่าอีเมลผู้ส่งและผู้รับสำหรับการแจ้งเตือน (ช่อง sender_password ให้เว้นว่างไว้ เพราะเราย้ายไป secrets.json แล้ว)
 
-yara_rules_url: Provide a raw link to your malware_rules.yar file (e.g., from a GitHub repository).
+yara_rules_url: ใส่ URL แบบ Raw ของไฟล์ malware_rules.yar ของคุณ (เช่น จาก GitHub)
 
-peer_nodes: List the addresses and ports of all nodes that will participate in the network.
+peer_nodes: ระบุ IP Address และ Port ของทุกโหนดที่จะเข้าร่วมในเครือข่าย
 
-▶️ How to Run
-You will need to open multiple terminal windows to simulate the network.
+vote_threshold: กำหนดจำนวนโหวตขั้นต่ำที่ต้องการเพื่อยืนยันว่าไฟล์เป็นอันตรายจริง
 
-Terminal 1: Start the Observer Node
-This window will show you all logs from the entire network.
+risk_threshold: กำหนดค่าคะแนนความเสี่ยงขั้นต่ำที่ไฟล์จะถูกพิจารณาว่าเป็นอันตราย
+
+D. ตั้งค่าไฟล์ที่เชื่อถือใน whitelist.json
+ระบุค่า SHA256 Hash ของไฟล์ที่คุณเชื่อใจและไม่ต้องการให้ระบบตรวจสอบหรือกักกัน
+
+JSON
+
+{
+    "description": "SHA256 hashes of critical system files that should never be quarantined.",
+    "hashes": [
+        "a4c4803588282b26115998007a833e2133965b7ad52243419056c708e1a72598",
+        "c252f36075e543632940259163b9554e221379b37c0462001a313e6a715a078b"
+    ]
+}
+▶️ วิธีการรันระบบ
+คุณจะต้องเปิดหน้าต่าง Terminal หลายอันเพื่อจำลองการทำงานของเครือข่าย
+
+Terminal 1: รัน Observer Node
+หน้าต่างนี้จะแสดง Log ทั้งหมดจากทุกโหนดในเครือข่าย
 
 Bash
 
 python observer.py
-Terminal 2: Start Node 1
-Each node needs to be assigned a unique port from your config.json.
+Terminal 2: รัน Node 1
+แต่ละโหนดจะต้องใช้ Port ที่ไม่ซ้ำกันตามที่ระบุไว้ใน config.json
 
 Bash
 
 python honeypot_node.py 9997
-Terminal 3: Start Node 2
+Terminal 3: รัน Node 2
 
 Bash
 
 python honeypot_node.py 9998
-Terminal 4: Start Node 3
+Terminal 4: รัน Node 3
 
 Bash
 
 python honeypot_node.py 9999
-🔬 Demonstration
-Drop a malicious file (e.g., from your test_malware folder) into the honeypot_folder.
-
-Observe the Terminals:
-
-One of the honeypot_node.py terminals will detect the file, analyze it, and immediately move it to the quarantine folder.
-
-It will then "gossip" the threat information to its peers.
-
-Watch the Quorum:
-
-To simulate consensus, drop the same file again (or have another node detect it).
-
-Once the number of nodes confirming the threat reaches the vote_threshold, you will see a NETWORK BLACKLISTED message in the Observer Node's terminal.
-
-Check the Observer:
-
-The observer.py terminal provides a clean, timestamped log of all these events, giving you a complete overview of the network's defensive actions.

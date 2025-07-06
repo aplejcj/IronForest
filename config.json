@@ -1,10 +1,10 @@
 {
     "email_settings": {
         "sender_email": "plankton.nawa@gmail.com",
-        "sender_password": "mbes jdnw xzwh gtnk",
+        "sender_password": "",
         "receiver_email": "plankton.nawa@gmail.com"
     },
-    "encryption_key": "IronForestSecretKeyForAES-256!!",
+    "encryption_key": "",
     "yara_rules_url": "https://raw.githubusercontent.com/aplejcj/IronForest/main/malware_rules.yar",
     "observer_addr": "127.0.0.1:10000",
     "peer_nodes": [

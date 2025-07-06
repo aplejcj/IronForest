@@ -323,11 +323,32 @@ def gossip_threat(threat_data, peers, gossip_count, node_addr, config):
 # --- การทำงานหลัก ---
 def main():
     try:
-        config = load_config()
+        with open(CONFIG_FILE, 'r') as f:
+            config = json.load(f)
+
+        try:
+            with open("secrets.json", 'r') as f:
+                secrets = json.load(f)
+        except FileNotFoundError:
+            print("[FATAL] Critical secrets file 'secrets.json' not found. Exiting.")
+            sys.exit(1)
+        except json.JSONDecodeError:
+            print("[FATAL] Could not decode 'secrets.json'. Please check its format. Exiting.")
+            sys.exit(1)
+
+        config['encryption_key'] = secrets.get('encryption_key')
+        config['email_settings']['sender_password'] = secrets.get('sender_password')
+        
+        if not all([config['encryption_key'], config['email_settings']['sender_password']]):
+            print("[FATAL] Encryption key or email password missing from 'secrets.json'. Exiting.")
+            sys.exit(1)
+
         global trusted_hashes
-        with open(WHITELIST_FILE, 'r') as f: trusted_hashes = set(json.load(f).get('hashes',[]))
+        with open(WHITELIST_FILE, 'r') as f: 
+            trusted_hashes = set(json.load(f).get('hashes',[]))
+    
     except FileNotFoundError as e:
-        print(f"[FATAL] Critical file missing: {e}. Exiting.")
+        print(f"[FATAL] Critical file missing: {e}. Please ensure config.json and whitelist.json exist. Exiting.")
         sys.exit(1)
         
     load_yara_rules(YARA_RULES_PATH)
@@ -337,7 +358,6 @@ def main():
     node_addr = f"127.0.0.1:{node_port}"
     peers = [p for p in config['peer_nodes'] if p != node_addr]
 
-    # เริ่ม Threads การทำงานเบื้องหลัง
     threading.Thread(target=threat_listener, args=(node_port, node_addr, config), daemon=True).start()
     threading.Thread(target=yara_updater, args=(config,), daemon=True).start()
     threading.Thread(target=cleanup_old_votes, daemon=True).start()
@@ -356,13 +376,16 @@ def main():
             if new_files:
                 for filename in new_files:
                     filepath = os.path.join(HONEYPOT_PATH, filename)
-                    if not os.path.isfile(filepath): continue
+                    if not os.path.isfile(filepath): 
+                        continue
                     
                     file_hash = get_file_hash(filepath)
                     
                     try:
-                        with open(BLACKLIST_FILE, 'r') as f: network_blacklist = json.load(f)
-                    except (FileNotFoundError, json.JSONDecodeError): network_blacklist = {}
+                        with open(BLACKLIST_FILE, 'r') as f: 
+                            network_blacklist = json.load(f)
+                    except (FileNotFoundError, json.JSONDecodeError): 
+                        network_blacklist = {}
                     
                     if not file_hash or file_hash in trusted_hashes or file_hash in network_blacklist:
                         known_files.add(filename)
