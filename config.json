@@ -1,12 +1,12 @@
 {
     "email_settings": {
-        "sender_email": "plankton.nawa@gmail.com",
+        "sender_email": "your_email@gmail.com",
         "sender_password": "",
-        "receiver_email": "plankton.nawa@gmail.com"
+        "receiver_email": "admin_email@example.com"
     },
     "encryption_key": "",
     "yara_rules_url": "https://raw.githubusercontent.com/aplejcj/IronForest/main/malware_rules.yar",
-    "observer_addr": "127.0.0.1:10000",
+    "dashboard_api_url": "http://127.0.0.1:10000/api/log",
     "peer_nodes": [
         "127.0.0.1:9997",
         "127.0.0.1:9998",

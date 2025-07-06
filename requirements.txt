@@ -5,3 +5,5 @@ cryptography
 pandas
 matplotlib
 seaborn
+Flask
+Flask-SocketIO

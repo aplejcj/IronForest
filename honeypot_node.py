@@ -179,13 +179,14 @@ def send_email_alert(filename, risk_score, reasons, config):
     except Exception as e: print(f"[EMAIL ERROR] Could not send email: {e}")
 
 def log_to_observer(log_msg, config):
+    dashboard_url = config.get('dashboard_api_url')
+    if not dashboard_url:
+        return
     try:
-        host, port_str = config['observer_addr'].split(':')
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(2)
-            s.connect((host, int(port_str)))
-            s.sendall(log_msg.encode('utf-8'))
-    except Exception: pass
+        payload = {"log_msg": log_msg}
+        requests.post(dashboard_url, json=payload, timeout=2)
+    except requests.exceptions.RequestException:
+        pass
 
 def send_message(host, port, message, config):
     message['msg_id'] = hashlib.sha256(os.urandom(32)).hexdigest()
@@ -213,7 +214,7 @@ def update_network_blacklist(file_hash, node_addr, config):
 
 def threat_listener(node_port, node_addr, config):
     key = config['encryption_key']
-    host = "127.0.0.1"
+    host = "0.0.0.0"
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, node_port))
         s.listen()
@@ -320,60 +321,86 @@ def main():
     except FileNotFoundError as e:
         print(f"[FATAL] Critical file missing: {e}. Please ensure config.json and whitelist.json exist. Exiting.")
         sys.exit(1)
+    
     load_yara_rules(YARA_RULES_PATH)
     load_state()
+    
+    if len(sys.argv) < 2:
+        print("Usage: python honeypot_node.py <port_for_this_node>")
+        sys.exit(1)
+        
     node_port = int(sys.argv[1])
-    node_addr = f"127.0.0.1:{node_port}"
-    peers = [p for p in config['peer_nodes'] if p != node_addr]
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+    except socket.gaierror:
+        local_ip = "127.0.0.1"
+        
+    node_addr = f"{local_ip}:{node_port}"
+    print(f"Starting node with address: {node_addr}")
+
+    peers = [p for p in config['peer_nodes'] if p != f"127.0.0.1:{node_port}" and p != f"{local_ip}:{node_port}"]
+    
     threading.Thread(target=threat_listener, args=(node_port, node_addr, config), daemon=True).start()
     threading.Thread(target=yara_updater, args=(config,), daemon=True).start()
     threading.Thread(target=cleanup_old_votes, daemon=True).start()
     threading.Thread(target=periodic_sync, args=(peers, node_addr, config), daemon=True).start()
+    
     time.sleep(1)
     initial_sync(peers, node_addr, config)
+    
     log_to_observer(f"[{node_addr}] Node started.", config)
     known_files = set()
+    
     while True:
         try:
             current_files = set(os.listdir(HONEYPOT_PATH))
             new_files = current_files - known_files
+            
             if new_files:
                 for filename in new_files:
                     filepath = os.path.join(HONEYPOT_PATH, filename)
                     if not os.path.isfile(filepath):
                         continue
+
+                    known_files.add(filename)
+
                     file_hash = get_file_hash(filepath)
+                    
                     try:
                         with open(BLACKLIST_FILE, 'r') as f:
                             network_blacklist = json.load(f)
                     except (FileNotFoundError, json.JSONDecodeError):
                         network_blacklist = {}
+
                     if not file_hash or file_hash in trusted_hashes or file_hash in network_blacklist:
-                        known_files.add(filename)
                         continue
+
                     risk_score, reasons = analyze_file(filepath)
+                    
                     if risk_score >= config['risk_threshold']:
                         log_msg = f"[{node_addr}] DETECTED: {filename} (Score: {risk_score})"
                         print(log_msg)
                         log_to_observer(log_msg, config)
+                        
                         if quarantine_file(filepath, filename, node_addr):
                             with state_lock:
                                 threat_data = {"type": "vote", "hash": file_hash, "source_node": node_addr}
-                                pending_votes.setdefault(file_hash, {'voters': set(), 'timestamp': datetime.now(timezone.utc).isoformat()})['voters'].add(node_addr)
+                                pending_votes.setdefault(file_hash, {'voters': set(), 'timestamp': datetime.now(timezone.utc).isoformat()})['voters'].add(source_node)
                                 save_state()
                                 gossip_threat(threat_data, peers, config['gossip_count'], node_addr, config)
                                 if len(pending_votes[file_hash]['voters']) >= config['vote_threshold']:
                                     update_network_blacklist(file_hash, node_addr, config)
-                            send_email_alert(filename, risk_score, reasons, config)
-                        continue
-                known_files.update(new_files)
+                                send_email_alert(filename, risk_score, reasons, config)
+            
+            disappeared_files = known_files - current_files
+            if disappeared_files:
+                known_files.difference_update(disappeared_files)
+
             time.sleep(2)
         except KeyboardInterrupt:
             log_to_observer(f"[{node_addr}] Node stopped.", config)
             break
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python honeypot_node.py <port_for_this_node>")
-    else:
-        main()
+    main()
