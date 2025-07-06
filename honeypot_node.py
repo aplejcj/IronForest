@@ -18,7 +18,6 @@ import requests
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
-# --- การตั้งค่าและตัวแปร Global ---
 HONEYPOT_PATH = "./honeypot_folder"
 QUARANTINE_PATH = "./quarantine"
 STATE_PATH = "./state"
@@ -34,7 +33,6 @@ pending_votes = {}
 state_lock = threading.Lock()
 recent_message_ids = collections.deque(maxlen=1000)
 
-# --- กลไกการเข้ารหัส ---
 def encrypt_data(key, data):
     iv = os.urandom(12)
     encryptor = Cipher(algorithms.AES(key.encode()), modes.GCM(iv), backend=default_backend()).encryptor()
@@ -48,7 +46,6 @@ def decrypt_data(key, encrypted_data):
     decryptor = Cipher(algorithms.AES(key.encode()), modes.GCM(iv, tag), backend=default_backend()).decryptor()
     return decryptor.update(ciphertext) + decryptor.finalize()
 
-# --- กลไกการจัดการสถานะ (ปลอดภัยต่อ Thread) ---
 def load_state():
     global pending_votes
     with state_lock:
@@ -79,7 +76,6 @@ def cleanup_old_votes():
                     del pending_votes[h]
                 save_state()
 
-# --- กลไกการวิเคราะห์ไฟล์ (ปลอดภัยต่อไฟล์ขนาดใหญ่) ---
 def load_yara_rules(path=YARA_RULES_PATH):
     global yara_rules
     try:
@@ -98,89 +94,64 @@ def get_file_hash(filepath, chunk_size=8192):
     except IOError: return None
 
 def analyze_pe_file(filepath):
-    """
-    วิเคราะห์ไฟล์ PE โดยใช้ไลบรารี pefile เพื่อค้นหาลักษณะที่น่าสงสัย
-    """
     pe_risk = 0
     pe_reasons = []
-    
     suspicious_imports = {
         'CreateRemoteThread', 'WriteProcessMemory', 'OpenProcess',
         'VirtualAllocEx', 'GetProcAddress', 'LoadLibraryA'
     }
-
     try:
         pe = pefile.PE(filepath)
-        
-        
         if hasattr(pe, 'DIRECTORY_ENTRY_IMPORT'):
             for entry in pe.DIRECTORY_ENTRY_IMPORT:
                 for imp in entry.imports:
                     if imp.name and imp.name.decode('utf-8', 'ignore') in suspicious_imports:
                         pe_risk += 5
                         pe_reasons.append(f"Suspicious Import: {imp.name.decode('utf-8', 'ignore')}")
-        
-        
         for section in pe.sections:
             section_name = section.Name.decode('utf-8', 'ignore').strip('\x00')
             entropy = section.get_entropy()
             if entropy > 7.0:
                 pe_risk += 10
                 pe_reasons.append(f"High Entropy Section '{section_name}' ({entropy:.2f})")
-                
     except pefile.PEFormatError:
-        
         pass
     except Exception as e:
         print(f"[PE_ANALYSIS_ERROR] Could not analyze PE file {filepath}: {e}")
-        
-    return pe_risk, list(set(pe_reasons)) 
+    return pe_risk, list(set(pe_reasons))
 
 def analyze_file(filepath):
-    """
-    วิเคราะห์ไฟล์เพื่อหาความเสี่ยง โดยรวมการวิเคราะห์ YARA, Entropy และ PE Structure
-    """
     risk_score, reasons = 0, []
-    
     try:
         if yara_rules:
             matches = yara_rules.match(filepath=filepath)
             if matches:
                 risk_score += 15
                 reasons.append(f"YARA Match: {[m.rule for m in matches]}")
-        
         byte_counts = [0] * 256
         file_size = 0
         with open(filepath, 'rb') as f:
-            
             is_pe_file = f.read(2) == b'MZ'
-            f.seek(0) 
-            
+            f.seek(0)
             while chunk := f.read(8192):
                 for byte in chunk:
                     byte_counts[byte] += 1
                 file_size += len(chunk)
-        
         if file_size > 0:
             entropy = math.fsum(- (count/file_size) * math.log(count/file_size, 2) for count in byte_counts if count > 0)
             if entropy > 7.5:
                 risk_score += 10
                 reasons.append(f"High Entropy ({entropy:.2f})")
-                
-        
         if is_pe_file:
             pe_risk, pe_reasons = analyze_pe_file(filepath)
             if pe_risk > 0:
                 risk_score += pe_risk
                 reasons.extend(pe_reasons)
-
     except Exception as e:
         print(f"[FILE_ANALYSIS_ERROR] Could not analyze file {filepath}: {e}")
-        pass 
-        
+        pass
     return risk_score, reasons
 
-# --- กลไกการจัดการไฟล์และการแจ้งเตือน ---
 def quarantine_file(filepath, filename, node_addr):
     if not os.path.exists(QUARANTINE_PATH): os.makedirs(QUARANTINE_PATH)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -207,7 +178,6 @@ def send_email_alert(filename, risk_score, reasons, config):
         print(f"[EMAIL] Alert for '{filename}' sent successfully.")
     except Exception as e: print(f"[EMAIL ERROR] Could not send email: {e}")
 
-# --- กลไกเครือข่าย (เข้ารหัสและซิงค์ข้อมูล) ---
 def log_to_observer(log_msg, config):
     try:
         host, port_str = config['observer_addr'].split(':')
@@ -253,20 +223,19 @@ def threat_listener(node_port, node_addr, config):
             with conn:
                 try:
                     data = conn.recv(4096)
-                    if not data: continue
-                    
+                    if not data:
+                        continue
                     decrypted_data = decrypt_data(key, data)
                     message = json.loads(decrypted_data.decode('utf-8'))
-                    
                     msg_id = message.get('msg_id')
                     msg_time = datetime.fromisoformat(message.get('timestamp').replace('Z', '+00:00'))
+                    if not msg_id or not msg_time:
+                        continue
                     if msg_id in recent_message_ids or (datetime.now(timezone.utc) - msg_time) > timedelta(seconds=config['message_ttl_sec']):
                         continue
                     recent_message_ids.append(msg_id)
-
                     msg_type = message.get('type')
                     source_node = message.get('source_node')
-
                     if msg_type == 'vote':
                         file_hash = message.get('hash')
                         log_msg = f"[{node_addr}] <- Received vote for hash {file_hash[:10]} from {source_node}"
@@ -277,21 +246,23 @@ def threat_listener(node_port, node_addr, config):
                             save_state()
                             if len(pending_votes[file_hash]['voters']) >= config['vote_threshold']:
                                 update_network_blacklist(file_hash, node_addr, config)
-                    
                     elif msg_type == 'sync_request':
                         try:
-                            with open(BLACKLIST_FILE, 'r') as f: my_blacklist = json.load(f)
-                        except (FileNotFoundError, json.JSONDecodeError): my_blacklist = {}
+                            with open(BLACKLIST_FILE, 'r') as f:
+                                my_blacklist = json.load(f)
+                        except (FileNotFoundError, json.JSONDecodeError):
+                            my_blacklist = {}
                         response_msg = {'type': 'sync_response', 'blacklist': my_blacklist, 'source_node': node_addr}
                         r_host, r_port = source_node.split(':')
                         send_message(r_host, int(r_port), response_msg, config)
-
                     elif msg_type == 'sync_response':
                         their_blacklist = message.get('blacklist', {})
                         for h, ts in their_blacklist.items():
                             update_network_blacklist(h, node_addr, config)
-                            
-                except Exception: pass
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    print(f"[LISTENER_ERROR] Received corrupted or non-JSON message.")
+                except Exception as e:
+                    print(f"[LISTENER_ERROR] An unexpected error occurred: {e}")
 
 def yara_updater(config):
     while True:
@@ -309,7 +280,7 @@ def periodic_sync(peers, node_addr, config):
         time.sleep(config['state_check_interval_sec'])
         print("[SYNC] Performing periodic state check...")
         message = {"type": "sync_request", "source_node": node_addr}
-        gossip_threat(message, peers, len(peers), node_addr, config) # Send sync request to all peers
+        gossip_threat(message, peers, len(peers), node_addr, config)
 
 def gossip_threat(threat_data, peers, gossip_count, node_addr, config):
     selected_peers = random.sample(peers, min(len(peers), gossip_count))
@@ -320,12 +291,15 @@ def gossip_threat(threat_data, peers, gossip_count, node_addr, config):
             send_message(host, int(port_str), threat_data, config)
         except Exception: pass
 
-# --- การทำงานหลัก ---
+def initial_sync(peers, node_addr, config):
+    print("[SYNC] Performing initial state sync...")
+    message = {"type": "sync_request", "source_node": node_addr}
+    gossip_threat(message, peers, len(peers), node_addr, config)
+
 def main():
     try:
         with open(CONFIG_FILE, 'r') as f:
             config = json.load(f)
-
         try:
             with open("secrets.json", 'r') as f:
                 secrets = json.load(f)
@@ -335,40 +309,30 @@ def main():
         except json.JSONDecodeError:
             print("[FATAL] Could not decode 'secrets.json'. Please check its format. Exiting.")
             sys.exit(1)
-
         config['encryption_key'] = secrets.get('encryption_key')
         config['email_settings']['sender_password'] = secrets.get('sender_password')
-        
         if not all([config['encryption_key'], config['email_settings']['sender_password']]):
             print("[FATAL] Encryption key or email password missing from 'secrets.json'. Exiting.")
             sys.exit(1)
-
         global trusted_hashes
-        with open(WHITELIST_FILE, 'r') as f: 
+        with open(WHITELIST_FILE, 'r') as f:
             trusted_hashes = set(json.load(f).get('hashes',[]))
-    
     except FileNotFoundError as e:
         print(f"[FATAL] Critical file missing: {e}. Please ensure config.json and whitelist.json exist. Exiting.")
         sys.exit(1)
-        
     load_yara_rules(YARA_RULES_PATH)
     load_state()
-    
     node_port = int(sys.argv[1])
     node_addr = f"127.0.0.1:{node_port}"
     peers = [p for p in config['peer_nodes'] if p != node_addr]
-
     threading.Thread(target=threat_listener, args=(node_port, node_addr, config), daemon=True).start()
     threading.Thread(target=yara_updater, args=(config,), daemon=True).start()
     threading.Thread(target=cleanup_old_votes, daemon=True).start()
     threading.Thread(target=periodic_sync, args=(peers, node_addr, config), daemon=True).start()
-    
     time.sleep(1)
     initial_sync(peers, node_addr, config)
-
     log_to_observer(f"[{node_addr}] Node started.", config)
     known_files = set()
-    
     while True:
         try:
             current_files = set(os.listdir(HONEYPOT_PATH))
@@ -376,27 +340,22 @@ def main():
             if new_files:
                 for filename in new_files:
                     filepath = os.path.join(HONEYPOT_PATH, filename)
-                    if not os.path.isfile(filepath): 
+                    if not os.path.isfile(filepath):
                         continue
-                    
                     file_hash = get_file_hash(filepath)
-                    
                     try:
-                        with open(BLACKLIST_FILE, 'r') as f: 
+                        with open(BLACKLIST_FILE, 'r') as f:
                             network_blacklist = json.load(f)
-                    except (FileNotFoundError, json.JSONDecodeError): 
+                    except (FileNotFoundError, json.JSONDecodeError):
                         network_blacklist = {}
-                    
                     if not file_hash or file_hash in trusted_hashes or file_hash in network_blacklist:
                         known_files.add(filename)
                         continue
-                    
                     risk_score, reasons = analyze_file(filepath)
                     if risk_score >= config['risk_threshold']:
                         log_msg = f"[{node_addr}] DETECTED: {filename} (Score: {risk_score})"
                         print(log_msg)
                         log_to_observer(log_msg, config)
-                        
                         if quarantine_file(filepath, filename, node_addr):
                             with state_lock:
                                 threat_data = {"type": "vote", "hash": file_hash, "source_node": node_addr}
@@ -407,7 +366,6 @@ def main():
                                     update_network_blacklist(file_hash, node_addr, config)
                             send_email_alert(filename, risk_score, reasons, config)
                         continue
-                
                 known_files.update(new_files)
             time.sleep(2)
         except KeyboardInterrupt:
